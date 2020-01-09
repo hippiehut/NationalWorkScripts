@@ -1,0 +1,11 @@
+from datetime import datetime
+
+ms = int(WTGFV.Value)
+
+if ms > 0:
+    ts = ms / 1000 + (5 * 3600)
+    dt = datetime.fromtimestamp(ts)
+    dstring = dt.strftime("%m/%d/%Y")
+    WTGFV.Value = dstring
+else:
+    WTGFV.Value = None
