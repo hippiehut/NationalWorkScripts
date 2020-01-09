@@ -4,106 +4,130 @@ import sys
 import mysql.connector
 from mysql.connector import errorcode
 
-if len(sys.argv)<4:
-    print "Specify state abbreviation, layer list file, and parcel ID file."
-    sys.exit(1)
 
-stateAbbrev = sys.argv[1]
+def gencoords(stateAbbrev, layerListFile, uniqueFields):
+    if len(sys.argv)<4:
+        print "Specify state abbreviation, layer list file, and parcel ID file."
+        sys.exit(1)
 
-if len(stateAbbrev) != 2:
-    print "State abbreviations have exactly two characters.  Unlike what you typed."
-    sys.exit(1)
+    stateAbbrev = sys.argv[1]
 
-dbUser =  "root"
-dbPassword =  "jw4B1t0Sh"
-dbHost =  "localhost"
-dbDatabase =  "NATIONAL_BASE"
-dbPort =  3392
+    if len(stateAbbrev) != 2:
+        print "State abbreviations have exactly two characters.  Unlike what you typed."
+        sys.exit(1)
 
-destBase="D:/NationalWork/"
+    dbUser =  "root"
+    dbPassword =  "jw4B1t0Sh"
+    dbHost =  "localhost"
+    dbDatabase =  "NATIONAL_BASE"
+    dbPort =  3392
 
-try:
-    dbConn = mysql.connector.connect(user=dbUser, password=dbPassword,
-        host=dbHost, database=dbDatabase, port=dbPort)
-except mysql.connector.Error as exc:
-    if exc.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-        print "Authentication failed."
-    elif exc.errno == errorcode.ER_BAD_DB_ERROR:
-        print "Invalid database."
-    else:
-        print exc
-    sys.exit(1)
-except Exception as exc:
-    print exc.args[0]
-    sys.exit(1)
+    destBase="D:/NationalWork/"
 
-stateQuery = ("SELECT STATE_NAME, FIPS_ID FROM NATIONAL_BASE.STATES "
-    "WHERE STATE_ABBREV='" + stateAbbrev + "';")
+    try:
+        dbConn = mysql.connector.connect(user=dbUser, password=dbPassword,
+            host=dbHost, database=dbDatabase, port=dbPort)
+    except mysql.connector.Error as exc:
+        if exc.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print "Authentication failed."
+        elif exc.errno == errorcode.ER_BAD_DB_ERROR:
+            print "Invalid database."
+        else:
+            print exc
+        sys.exit(1)
+    except Exception as exc:
+        print exc.args[0]
+        sys.exit(1)
 
-dbQuery = dbConn.cursor()
+    stateQuery = ("SELECT STATE_NAME, FIPS_ID FROM NATIONAL_BASE.STATES "
+        "WHERE STATE_ABBREV='" + stateAbbrev + "';")
 
-dbQuery.execute(stateQuery)
+    dbQuery = dbConn.cursor()
 
-rows = dbQuery.fetchone()
+    dbQuery.execute(stateQuery)
 
-if rows is None:
-    print "Unknown state."
-    dbConn.close()
-    sys.exit(1)
+    rows = dbQuery.fetchone()
 
-stateName = rows[0]
-stateFips = rows[1]
+    if rows is None:
+        print "Unknown state."
+        dbConn.close()
+        sys.exit(1)
 
-dbName = "NATIONAL_" + stateFips
+    stateName = rows[0]
+    stateFips = rows[1]
 
-layerFile = sys.argv[2]
-idFile = sys.argv[3]
+    dbName = "NATIONAL_" + stateFips
 
-iql = list()
+    layerFile = sys.argv[2]
+    idFile = sys.argv[3]
 
-iql.append("DROP TABLE IF EXISTS " + dbName + ".COORDS_999;\n")
-iql.append("CREATE TABLE " + dbName + ".COORDS_999 LIKE NATIONAL_BASE.COORDS_DISSOLVED_TEMPLATE;\n")
+    iql = list()
 
-qbase = ( "INSERT IGNORE INTO " + dbName + ".COORDS_999 (PARCEL_ID, STATE_FIPS, "
-          "COUNTY_FIPS, PARCEL_LATITUDE, PARCEL_LONGITUDE, PARCEL_SHAPE, "
-          "PARCEL_ENVELOPE, PARCEL_CENTROID) SELECT CONCAT('%SFIPS%%CFIPS%', '_', "
-          "%PFIELD%), '%SFIPS%', '%CFIPS%', PARCEL_LATITUDE, PARCEL_LONGITUDE, "
-          "SHAPE, ENVELOPE(SHAPE), CENTROID(SHAPE) FROM " + dbName + ".%TNAME%;\n" )
+    iql.append("DROP TABLE IF EXISTS " + dbName + ".COORDS_999;\n")
+    iql.append("CREATE TABLE " + dbName + ".COORDS_999 LIKE NATIONAL_BASE.COORDS_DISSOLVED_TEMPLATE;\n")
 
-ofile = open("gencoords.sql", "w")
+    qbase = ( "INSERT IGNORE INTO " + dbName + ".COORDS_999 (PARCEL_ID, STATE_FIPS, "
+              "COUNTY_FIPS, PARCEL_LATITUDE, PARCEL_LONGITUDE, PARCEL_SHAPE, "
+              "PARCEL_ENVELOPE, PARCEL_CENTROID) SELECT CONCAT('%SFIPS%%CFIPS%', '_', "
+              "%PFIELD%), '%SFIPS%', '%CFIPS%', PARCEL_LATITUDE, PARCEL_LONGITUDE, "
+              "SHAPE, ENVELOPE(SHAPE), CENTROID(SHAPE) FROM " + dbName + ".%TNAME%;\n" )
 
-for q in iql:
-    ofile.write(q)
+    ofile = open("gencoords.sql", "w")
 
-# layer list file as output by layerlist.py 
-lfile = open(layerFile, "r")
+    for q in iql:
+        ofile.write(q)
 
-tlist = list()
-pdict = dict()
+    # layer list file as output by layerlist.py 
+    lfile = open(layerFile, "r")
 
-for dline in lfile:
-    data = dline.rstrip("\n").strip()
-    da = data.split("|")
-    table = da[1]
-    if table.upper().find("DISSOLVED") > 0:
-        tlist.append(table)
+    tlist = list()
+    pdict = dict()
 
-lfile.close()
+    for dline in lfile:
+        data = dline.rstrip("\n").strip()
+        da = data.split("|")
+        table = da[1]
+        if table.upper().find("DISSOLVED") > 0:
+            tlist.append(table)
 
-lfile = open(idFile, "r")
+    lfile.close()
 
-for dline in lfile:
-    data = dline.rstrip("\n").strip()
-    da = data.split("=")
-    ca = da[0].split("_")
-    cfips = ca[1]
-    pfield = da[1]
-    pdict[cfips] = pfield
+    lfile = open(idFile, "r")
 
-for t in tlist:
-    ta = t.split("_")
-    cfips = ta[1]
-    qstring = qbase.replace("%TNAME%", t).replace("%CFIPS%", cfips).replace("%SFIPS%", stateFips).replace("%PFIELD%", pdict[cfips])
-    ofile.write(qstring)
+    for dline in lfile:
+        data = dline.rstrip("\n").strip()
+        da = data.split("=")
+        ca = da[0].split("_")
+        cfips = ca[1]
+        pfield = da[1]
+        pdict[cfips] = pfield
 
-ofile.close()
+    for t in tlist:
+        ta = t.split("_")
+        cfips = ta[1]
+        qstring = qbase.replace("%TNAME%", t).replace("%CFIPS%", cfips).replace("%SFIPS%", stateFips).replace("%PFIELD%", pdict[cfips])
+        ofile.write(qstring)
+
+    ofile.close()
+
+
+if __name__ == "__main__":
+    if len(sys.argv)<3:
+        print("Specify state abbreviation and layer list.")
+        sys.exit(1)
+
+    try:
+        stateAbbrev = sys.argv[1]
+        layerFile = sys.argv[2]
+        uniqueFields = sys.argv[3]
+        
+        if len(stateAbbrev) != 2:
+            print("State abbreviations have exactly two characters.  Unlike what you typed.")
+            sys.exit(1)
+
+        gencoords(stateAbbrev, layerFile, uniqueFields)
+        # print(a)
+    except:
+        # print("error")
+        pass
+        
